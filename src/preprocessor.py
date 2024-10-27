@@ -5,6 +5,9 @@ from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
+def obj2cat(df): 
+    """Convert object columns to categories."""
+    return (df.assign(**df.select_dtypes(object).astype('category')))
 
 class DataProcessor:
     def __init__(self, filepath, config):
