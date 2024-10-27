@@ -1,0 +1,4 @@
+[ZoneTransfer]
+ZoneId=3
+ReferrerUrl=https://store.metasnake.com/
+HostUrl=https://s3.us-east-1.amazonaws.com/product-content.podia.com/f93di2qbnvdlpocwazy5tyhv2f5l?response-content-disposition=attachment%3B%20filename%3D%22bank-additional-full.csv%22%3B%20filename%2A%3DUTF-8%27%27bank-additional-full.csv&response-content-type=text%2Fcsv&X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIAS4DOQ376LOGFEVUO%2F20240826%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20240826T114446Z&X-Amz-Expires=3600&X-Amz-SignedHeaders=host&X-Amz-Signature=c8897ba4cb121267b5be2dcd8ce61a58b842a42b5408994099379d156db4e288
