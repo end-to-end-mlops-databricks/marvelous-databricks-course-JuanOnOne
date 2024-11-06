@@ -44,10 +44,10 @@ model = mlflow.sklearn.load_model(f'runs:/{run_id}/randomclassifier-pipeline-mod
 # COMMAND ----------
 
 class CustomModelWrapper(mlflow.pyfunc.PythonModel):
-    
+
     def __init__(self, model):
         self.model = model
-        
+
     def predict(self, context, model_input):
         if isinstance(model_input, pd.DataFrame):
             predictions = self.model.predict(model_input)
@@ -86,7 +86,7 @@ with mlflow.start_run(
     tags={"branch": "week2",
           "git_sha": f"{git_sha}"}
     ) as run:
-    
+
     run_id = run.info.run_id
     signature = infer_signature(model_input=X_train, model_output={'Prediction': example_prediction})
     dataset = mlflow.data.from_spark(
@@ -123,7 +123,7 @@ with open("model_version.json", "w") as json_file:
 
 # COMMAND ----------
 model_version_alias = "the_best_model"
-mlflow_client.set_registered_model_alias(model_name, model_version_alias, "1")  
+mlflow_client.set_registered_model_alias(model_name, model_version_alias, "1")
 
 model_uri = f"models:/{model_name}@{model_version_alias}"
 model = mlflow.pyfunc.load_model(model_uri)

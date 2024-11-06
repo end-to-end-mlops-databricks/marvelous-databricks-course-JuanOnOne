@@ -64,8 +64,8 @@ le = LabelEncoder()
 
 # Define the preprocessor
 preprocessor = ColumnTransformer(
-    transformers=[('num', numeric_transformer, num_features), 
-                  ('cat', categorical_transformer, cat_features)], 
+    transformers=[('num', numeric_transformer, num_features),
+                  ('cat', categorical_transformer, cat_features)],
     remainder='passthrough'
 )
 
@@ -115,7 +115,7 @@ with mlflow.start_run(
     train_set_spark, table_name=f"{catalog_name}.{schema_name}.train_set",
     version="0")
     mlflow.log_input(dataset, context="training")
-    
+
     mlflow.sklearn.log_model(
         sk_model=pipeline,
         artifact_path="randomclassifier-pipeline-model",
@@ -136,4 +136,3 @@ dataset_source = mlflow.data.get_source(dataset_info)
 dataset_source.load()
 
 # COMMAND ----------
-

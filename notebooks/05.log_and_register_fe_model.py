@@ -1,26 +1,23 @@
 # Databricks notebook source
-#MAGIC %pip install ./mlops_with_databricks-0.0.1-py3-none-any.whl
+# MAGIC %pip install ./mlops_with_databricks-0.0.1-py3-none-any.whl
 
 # COMMAND ----------
 # dbutils.library.restartPython()
 
 # COMMAND ----------
-import yaml
-from databricks import feature_engineering
-from pyspark.sql import SparkSession
-from databricks.sdk import WorkspaceClient
 import mlflow
-from pyspark.sql import functions as F
+from databricks import feature_engineering
+from databricks.feature_engineering import FeatureFunction, FeatureLookup
+from databricks.sdk import WorkspaceClient
 from mlflow.models import infer_signature
-from sklearn.preprocessing import OneHotEncoder
+from pyspark.sql import SparkSession
 from sklearn.compose import ColumnTransformer
-from sklearn.pipeline import Pipeline
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.impute import SimpleImputer
-from sklearn.preprocessing import LabelEncoder, OneHotEncoder, StandardScaler
 from sklearn.metrics import accuracy_score, precision_score, recall_score, roc_auc_score
-from datetime import datetime
-from databricks.feature_engineering import FeatureFunction, FeatureLookup
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import LabelEncoder, OneHotEncoder, StandardScaler
+
 from mlops_with_databricks.config import ProjectConfig
 
 # Initialize the Databricks session and clients
@@ -50,7 +47,7 @@ feature_table_name = f"{catalog_name}.{schema_name}.bank_marketing_features"
 # Load training and test sets
 # Load training and test sets
 train_set = spark.table(f"{catalog_name}.{schema_name}.train_set")
-features_renamed = [f.replace('.', '_') if "." in f else f for f in train_set.columns]
+features_renamed = [f.replace(".", "_") if "." in f else f for f in train_set.columns]
 train_set = train_set.toDF(*features_renamed)
 
 test_set = spark.table(f"{catalog_name}.{schema_name}.test_set")
@@ -74,18 +71,26 @@ CREATE OR REPLACE TABLE {catalog_name}.{schema_name}.bank_marketing_features
 """)
 
 # Add primary key to table
-spark.sql(f"ALTER TABLE {catalog_name}.{schema_name}.bank_marketing_features "
-          "ADD CONSTRAINT bank_marketing_pk PRIMARY KEY(Id);")
+spark.sql(
+    f"ALTER TABLE {catalog_name}.{schema_name}.bank_marketing_features "
+    "ADD CONSTRAINT bank_marketing_pk PRIMARY KEY(Id);"
+)
 
 # enableChangeDataFeed to True
-spark.sql(f"ALTER TABLE {catalog_name}.{schema_name}.bank_marketing_features "
-          "SET TBLPROPERTIES (delta.enableChangeDataFeed = true);")
+spark.sql(
+    f"ALTER TABLE {catalog_name}.{schema_name}.bank_marketing_features "
+    "SET TBLPROPERTIES (delta.enableChangeDataFeed = true);"
+)
 
 # Insert data into the feature table from both train and test sets
-spark.sql(f"INSERT INTO {catalog_name}.{schema_name}.bank_marketing_features "
-          f"SELECT Id, housing, default, loan FROM {catalog_name}.{schema_name}.train_set")
-spark.sql(f"INSERT INTO {catalog_name}.{schema_name}.bank_marketing_features "
-          f"SELECT Id, housing, default, loan FROM {catalog_name}.{schema_name}.test_set")
+spark.sql(
+    f"INSERT INTO {catalog_name}.{schema_name}.bank_marketing_features "
+    f"SELECT Id, housing, default, loan FROM {catalog_name}.{schema_name}.train_set"
+)
+spark.sql(
+    f"INSERT INTO {catalog_name}.{schema_name}.bank_marketing_features "
+    f"SELECT Id, housing, default, loan FROM {catalog_name}.{schema_name}.test_set"
+)
 
 # COMMAND ----------
 
@@ -115,7 +120,9 @@ $$
 train_set = train_set.drop("housing", "loan", "default")
 
 # CAST primary key to "string"
-train_set = train_set.withColumn("Id", train_set["Id"].cast("string"))  # <- make sure "Id" it's string type!  # <- make sure "Id" it's string type!
+train_set = train_set.withColumn(
+    "Id", train_set["Id"].cast("string")
+)  # <- make sure "Id" it's string type!  # <- make sure "Id" it's string type!
 
 ###########################
 # Feature engineering setup
@@ -134,12 +141,10 @@ training_set = fe.create_training_set(
         FeatureFunction(
             udf_name=function_name,
             output_name="risk",
-            input_bindings={"default_": "default_",
-                            "housing": "housing",
-                            "loan": "loan"}
+            input_bindings={"default_": "default_", "housing": "housing", "loan": "loan"},
         ),
     ],
-    exclude_columns=["update_timestamp_utc"]
+    exclude_columns=["update_timestamp_utc"],
 )
 
 # Load feature-engineered DataFrame
@@ -152,8 +157,8 @@ test_set = test_set.selectExpr("*", f"{function_name}(default, housing, loan) as
 test_set = test_set.toPandas()
 
 # Split features and target
-num_features = [f.replace('.', '_') for f in num_features]
-cat_features = [f.replace('.', '_') for f in cat_features] + ['risk']
+num_features = [f.replace(".", "_") for f in num_features]
+cat_features = [f.replace(".", "_") for f in cat_features] + ["risk"]
 X_train = training_df[num_features + cat_features]
 y_train = training_df[target]
 X_test = test_set[num_features + cat_features]
@@ -163,9 +168,7 @@ y_test = test_set[target]
 # Setup preprocessing and model pipeline
 ########################################
 # Numeric Transformer
-numeric_transformer = Pipeline(
-            steps=[("imputer", SimpleImputer(strategy="median")), ("scaler", StandardScaler())]
-        )
+numeric_transformer = Pipeline(steps=[("imputer", SimpleImputer(strategy="median")), ("scaler", StandardScaler())])
 
 # Categorical Transformer
 categorical_transformer = Pipeline(
@@ -180,16 +183,12 @@ le = LabelEncoder()
 
 # Define the preprocessor
 preprocessor = ColumnTransformer(
-    transformers=[('num', numeric_transformer, num_features), 
-                  ('cat', categorical_transformer, cat_features)], 
-    remainder='passthrough'
+    transformers=[("num", numeric_transformer, num_features), ("cat", categorical_transformer, cat_features)],
+    remainder="passthrough",
 )
 
 # Create the pipeline with preprocessing and the RandomForestClassifier
-pipeline = Pipeline(steps=[
-    ('preprocessor', preprocessor),
-    ('regressor', RandomForestClassifier(**parameters))
-])
+pipeline = Pipeline(steps=[("preprocessor", preprocessor), ("regressor", RandomForestClassifier(**parameters))])
 
 ##########
 # MLFlow #
@@ -199,11 +198,7 @@ pipeline = Pipeline(steps=[
 mlflow.set_experiment(experiment_name="/Shared/bank-marketing-fe")
 git_sha = "ffa63b430205ff7"
 
-with mlflow.start_run(
-    tags={"branch": "week2",
-          "git_sha": f"{git_sha}"}
-    ) as run:
-
+with mlflow.start_run(tags={"branch": "week2", "git_sha": f"{git_sha}"}) as run:
     run_id = run.info.run_id
 
     # Pipeline fit/predict
@@ -239,9 +234,10 @@ with mlflow.start_run(
         training_set=training_set,
         signature=signature,
     )
-    
+
 mlflow.register_model(
-    model_uri=f'runs:/{run_id}/randomforest-pipeline-model-fe',
-    name=f"{catalog_name}.{schema_name}.bank_marketing_model_fe")
+    model_uri=f"runs:/{run_id}/randomforest-pipeline-model-fe",
+    name=f"{catalog_name}.{schema_name}.bank_marketing_model_fe",
+)
 
 # COMMAND ----------
