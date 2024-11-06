@@ -1,11 +1,11 @@
 # COMMAND ----------
-# !pip install ../dist/mlops_with_databricks-0.0.1-py3-none-any.whl -q
+# MAGIC!pip install ../dist/mlops_with_databricks-0.0.1-py3-none-any.whl -q
 
 # Databricks notebook source
-from mlops_with_databricks.preprocessor import DataProcessor
-from mlops_with_databricks.config import ProjectConfig
-import pandas as pd
 from pyspark.sql import SparkSession
+
+from mlops_with_databricks.config import ProjectConfig
+from mlops_with_databricks.preprocessor import DataProcessor
 
 spark = SparkSession.builder.getOrCreate()
 
@@ -28,3 +28,4 @@ train_data, test_data = data_processor.split_data()
 # Save untransformed data splits
 data_processor.save_to_catalog(train_data, test_data, spark)
 
+# COMMAND ----------

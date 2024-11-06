@@ -1,11 +1,12 @@
 import pandas as pd
+from pyspark.sql import SparkSession
+from pyspark.sql.functions import current_timestamp, to_utc_timestamp
+from sklearn.compose import ColumnTransformer
+from sklearn.impute import SimpleImputer
 from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import LabelEncoder, OneHotEncoder, StandardScaler
-from sklearn.impute import SimpleImputer
-from sklearn.compose import ColumnTransformer
-from pyspark.sql.functions import current_timestamp, to_utc_timestamp
-from pyspark.sql import SparkSession
+
 
 class DataProcessor:
     def __init__(self, filepath, config, spark: SparkSession):
@@ -21,11 +22,7 @@ class DataProcessor:
         self.target_encoder = None
 
     def load_data(self, filepath):
-        df = (self.spark
-              .read
-              .option("delimiter", ";")
-              .option("header", 'true')
-              .csv(filepath).toPandas())
+        df = self.spark.read.option("delimiter", ";").option("header", "true").csv(filepath).toPandas()
         return df
 
     def prepare_data(self):
@@ -41,14 +38,13 @@ class DataProcessor:
         for cat_col in cat_features:
             self.df[cat_col] = self.df[cat_col].astype("category")
 
+        # Create primary key "Id", needed later.
+        self.df["Id"] = pd.DataFrame(self.df.index + 1)
+
         # Extract target and relevant features
         target = self.config.target
-        relevant_columns = cat_features + num_features + [target]
+        relevant_columns = cat_features + num_features + [target] + ["Id"]
         self.df = self.df[relevant_columns]
-
-        # Split features and target
-        self.X = self.df.drop(columns=[target])
-        self.y = self.df[target]
 
     def create_preprocessor(self):
         """Create the preprocessor without fitting"""
@@ -74,15 +70,12 @@ class DataProcessor:
 
     def split_data(self, test_size=0.2, random_state=42):
         """Split data for training."""
-        X_train, X_test, y_train, y_test = train_test_split(
-            self.X, self.y, test_size=test_size, random_state=random_state, stratify=self.y
-        )
-        train_data = pd.concat([X_train, y_train], axis=1)
-        test_data = pd.concat([X_test, y_test], axis=1)
-        return train_data, test_data
+        train_set, test_set = train_test_split(self.df, test_size=test_size, random_state=random_state, stratify=self.y)
+        return train_set, test_set
 
     def save_to_catalog(self, train_set: pd.DataFrame, test_set: pd.DataFrame, spark: SparkSession):
         """Save splits to catalog."""
+
         train_set_with_timestamp = spark.createDataFrame(train_set).withColumn(
             "update_timestamp_utc", to_utc_timestamp(current_timestamp(), "UTC")
         )
