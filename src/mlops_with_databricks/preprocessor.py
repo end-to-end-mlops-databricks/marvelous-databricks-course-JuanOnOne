@@ -30,20 +30,32 @@ class DataProcessor:
 
         # Handle numeric features
         num_features = self.config.num_features
-        for col in num_features:
+        renamed_num_features = {col: col.replace(".", "_") for col in num_features if "." in col}
+        if renamed_num_features:
+            self.df.rename(columns=renamed_num_features, inplace=True)
+            renamed_num_features = [v for _, v in renamed_num_features.items()]
+        else:
+            renamed_num_features = num_features
+        for col in renamed_num_features:
             self.df[col] = pd.to_numeric(self.df[col], errors="coerce")
 
         # Convert categorical features from 'object' to 'category'
         cat_features = self.config.cat_features
-        for cat_col in cat_features:
+        renamed_cat_features = {col: col.replace(".", "_") for col in cat_features if "." in col}
+        if renamed_cat_features:
+            self.df.rename(columns=renamed_cat_features, inplace=True)
+            renamed_cat_features = [v for _, v in renamed_cat_features.items()]
+        else:
+            renamed_cat_features = cat_features
+        for cat_col in renamed_cat_features:
             self.df[cat_col] = self.df[cat_col].astype("category")
 
-        # Create primary key "Id", needed later.
+        # Create primary key "Id", needed later for FeatureEngineering client.
         self.df["Id"] = pd.DataFrame(self.df.index + 1)
 
         # Extract target and relevant features
         target = self.config.target
-        relevant_columns = cat_features + num_features + [target] + ["Id"]
+        relevant_columns = renamed_cat_features + renamed_num_features + [target] + ["Id"]
         self.df = self.df[relevant_columns]
 
     def create_preprocessor(self):

@@ -45,13 +45,9 @@ feature_table_name = f"{catalog_name}.{schema_name}.bank_marketing_features"
 
 # COMMAND ----------
 # Load training and test sets
-# Load training and test sets
 train_set = spark.table(f"{catalog_name}.{schema_name}.train_set")
-features_renamed = [f.replace(".", "_") if "." in f else f for f in train_set.columns]
-train_set = train_set.toDF(*features_renamed)
 
 test_set = spark.table(f"{catalog_name}.{schema_name}.test_set")
-test_set = test_set.toDF(*features_renamed)
 
 # COMMAND ----------
 ############################
@@ -157,8 +153,8 @@ test_set = test_set.selectExpr("*", f"{function_name}(default, housing, loan) as
 test_set = test_set.toPandas()
 
 # Split features and target
-num_features = [f.replace(".", "_") for f in num_features]
-cat_features = [f.replace(".", "_") for f in cat_features] + ["risk"]
+num_features = list(training_df.select_dtypes("number").columns)
+cat_features = list(training_df.select_dtypes("category").columns) + ["risk"]
 X_train = training_df[num_features + cat_features]
 y_train = training_df[target]
 X_test = test_set[num_features + cat_features]

@@ -1,22 +1,22 @@
 # COMMAND ----------
-!pip install ./mlops_with_databricks-0.0.1-py3-none-any.whl
+# MAGIC %pip install ./mlops_with_databricks-0.0.1-py3-none-any.whl
 
 # Databricks notebook source
 
-from pyspark.sql import SparkSession
-from mlops_with_databricks.config import ProjectConfig
-from sklearn.preprocessing import OneHotEncoder
-from sklearn.compose import ColumnTransformer
-from sklearn.pipeline import Pipeline
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.impute import SimpleImputer
-from sklearn.preprocessing import LabelEncoder, OneHotEncoder, StandardScaler
-from sklearn.metrics import accuracy_score, precision_score, recall_score, roc_auc_score
 import mlflow
 from mlflow.models import infer_signature
+from pyspark.sql import SparkSession
+from sklearn.compose import ColumnTransformer
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.impute import SimpleImputer
+from sklearn.metrics import accuracy_score, precision_score, recall_score, roc_auc_score
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import LabelEncoder, OneHotEncoder, StandardScaler
+
+from mlops_with_databricks.config import ProjectConfig
 
 mlflow.set_tracking_uri("databricks")
-mlflow.set_registry_uri('databricks-uc') # It must be -uc for registering models to Unity Catalog
+mlflow.set_registry_uri("databricks-uc")  # It must be -uc for registering models to Unity Catalog
 
 # COMMAND ----------
 
@@ -47,9 +47,7 @@ y_test = test_set[target]
 # COMMAND ----------
 
 # Numeric Transformer
-numeric_transformer = Pipeline(
-            steps=[("imputer", SimpleImputer(strategy="median")), ("scaler", StandardScaler())]
-        )
+numeric_transformer = Pipeline(steps=[("imputer", SimpleImputer(strategy="median")), ("scaler", StandardScaler())])
 
 # Categorical Transformer
 categorical_transformer = Pipeline(
@@ -64,26 +62,21 @@ le = LabelEncoder()
 
 # Define the preprocessor
 preprocessor = ColumnTransformer(
-    transformers=[('num', numeric_transformer, num_features),
-                  ('cat', categorical_transformer, cat_features)],
-    remainder='passthrough'
+    transformers=[("num", numeric_transformer, num_features), ("cat", categorical_transformer, cat_features)],
+    remainder="passthrough",
 )
 
 # Create the pipeline with preprocessing and the RandomForestClassifier
-pipeline = Pipeline(steps=[
-    ('preprocessor', preprocessor),
-    ('regressor', RandomForestClassifier(**parameters))
-])
+pipeline = Pipeline(steps=[("preprocessor", preprocessor), ("regressor", RandomForestClassifier(**parameters))])
 
 
 # COMMAND ----------
-mlflow.set_experiment(experiment_name='/Shared/bank-marketing')
+mlflow.set_experiment(experiment_name="/Shared/bank-marketing")
 git_sha = "ffa63b430205ff7"
 
 # Start an MLflow run to track the training process
 with mlflow.start_run(
-    tags={"git_sha": f"{git_sha}",
-          "branch": "week2"},
+    tags={"git_sha": f"{git_sha}", "branch": "week2"},
 ) as run:
     run_id = run.info.run_id
 
@@ -111,23 +104,18 @@ with mlflow.start_run(
     mlflow.log_metric("roc", auc)
     signature = infer_signature(model_input=X_train, model_output=y_pred)
 
-    dataset = mlflow.data.from_spark(
-    train_set_spark, table_name=f"{catalog_name}.{schema_name}.train_set",
-    version="0")
+    dataset = mlflow.data.from_spark(train_set_spark, table_name=f"{catalog_name}.{schema_name}.train_set", version="0")
     mlflow.log_input(dataset, context="training")
 
-    mlflow.sklearn.log_model(
-        sk_model=pipeline,
-        artifact_path="randomclassifier-pipeline-model",
-        signature=signature
-    )
+    mlflow.sklearn.log_model(sk_model=pipeline, artifact_path="randomclassifier-pipeline-model", signature=signature)
 
 
 # COMMAND ----------
 model_version = mlflow.register_model(
-    model_uri=f'runs:/{run_id}/randomclassifier-pipeline-model',
+    model_uri=f"runs:/{run_id}/randomclassifier-pipeline-model",
     name=f"{catalog_name}.{schema_name}.bank_marketing_model_basic",
-    tags={"git_sha": f"{git_sha}"})
+    tags={"git_sha": f"{git_sha}"},
+)
 
 # COMMAND ----------
 run = mlflow.get_run(run_id)
