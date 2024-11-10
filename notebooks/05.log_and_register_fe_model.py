@@ -184,7 +184,7 @@ preprocessor = ColumnTransformer(
 )
 
 # Create the pipeline with preprocessing and the RandomForestClassifier
-pipeline = Pipeline(steps=[("preprocessor", preprocessor), ("regressor", RandomForestClassifier(**parameters))])
+pipeline = Pipeline(steps=[("preprocessor", preprocessor), ("classifier", RandomForestClassifier(**parameters))])
 
 ##########
 # MLFlow #
