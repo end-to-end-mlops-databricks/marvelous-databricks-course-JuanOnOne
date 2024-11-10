@@ -38,6 +38,8 @@ train_set_spark = spark.table(f"{catalog_name}.{schema_name}.train_set")
 train_set = spark.table(f"{catalog_name}.{schema_name}.train_set").toPandas()
 test_set = spark.table(f"{catalog_name}.{schema_name}.test_set").toPandas()
 
+num_features = list(train_set.select_dtypes("number").columns)
+cat_features = list(train_set.select_dtypes("category").columns)
 X_train = train_set[num_features + cat_features]
 y_train = train_set[target]
 
