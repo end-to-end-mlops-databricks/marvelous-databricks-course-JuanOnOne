@@ -82,7 +82,9 @@ class DataProcessor:
 
     def split_data(self, test_size=0.2, random_state=42):
         """Split data for training."""
-        train_set, test_set = train_test_split(self.df, test_size=test_size, random_state=random_state, stratify=self.y)
+        train_set, test_set = train_test_split(
+            self.df, test_size=test_size, random_state=random_state, stratify=self.df["y"]
+        )
         return train_set, test_set
 
     def save_to_catalog(self, train_set: pd.DataFrame, test_set: pd.DataFrame, spark: SparkSession):

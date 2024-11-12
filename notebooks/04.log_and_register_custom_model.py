@@ -3,6 +3,7 @@
 
 # Databricks notebook source
 import json
+import subprocess
 import numpy as np
 import mlflow
 import pandas as pd
@@ -41,9 +42,10 @@ run_id = mlflow.search_runs(
 # Load previous model
 model = mlflow.sklearn.load_model(f"runs:/{run_id}/randomclassifier-pipeline-model")
 
+
 # COMMAND ----------
-# Create a custom model that utilizies pyfunc. 
-# The predictions are a dictionary of labels and probabilities. 
+# Create a custom model that utilizies pyfunc.
+# The predictions are a dictionary of labels and probabilities.
 class CustomModelWrapper(mlflow.pyfunc.PythonModel):
     def __init__(self, model):
         self.model = model
@@ -83,9 +85,13 @@ print("Example Prediction:", example_prediction)
 # https://docs.databricks.com/en/machine-learning/model-serving/private-libraries-model-serving.html
 # but does not work with pyspark, so we have a better option :-)
 
+##########
+# MLFlow #
+##########
+
 # Create a new experiment
 mlflow.set_experiment(experiment_name="/Shared/bank-marketing-pyfunc")
-git_sha = "ffa63b430205ff7"
+git_sha = subprocess.check_output(["git", "rev-parse", "HEAD"]).decode("ascii").strip()
 
 # Start experiment
 with mlflow.start_run(tags={"branch": "week2", "git_sha": f"{git_sha}"}) as run:
@@ -103,7 +109,7 @@ with mlflow.start_run(tags={"branch": "week2", "git_sha": f"{git_sha}"}) as run:
         ],
         additional_conda_channels=None,
     )
-    
+
     # Log the model
     mlflow.pyfunc.log_model(
         python_model=wrapped_model,
@@ -113,9 +119,9 @@ with mlflow.start_run(tags={"branch": "week2", "git_sha": f"{git_sha}"}) as run:
     )
 
 # COMMAND ----------
-# Load Model and unwrap 
+# Load Model and unwrap
 loaded_model = mlflow.pyfunc.load_model(f"runs:/{run_id}/pyfunc-bank-marketing-model")
-loaded_model.unwrap_python_model() 
+loaded_model.unwrap_python_model()
 
 # COMMAND ----------
 # Register the model

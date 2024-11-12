@@ -1,0 +1,18 @@
+{
+    "_name": "mlops_students.jarb8926.bank_marketing_model_pyfunc",
+    "_version": "2",
+    "_creation_time": 1731273540181,
+    "_last_updated_timestamp": 1731273547808,
+    "_description": "",
+    "_user_id": "jarb8926@gmail.com",
+    "_current_stage": null,
+    "_source": "dbfs:/databricks/mlflow-tracking/2240182848917939/f3c8d1b85caa40ad903670dde174f0ed/artifacts/pyfunc-bank-marketing-model",
+    "_run_id": "f3c8d1b85caa40ad903670dde174f0ed",
+    "_run_link": null,
+    "_status": "READY",
+    "_status_message": "",
+    "_tags": {
+        "git_sha": "ffa63b430205ff7"
+    },
+    "_aliases": []
+}

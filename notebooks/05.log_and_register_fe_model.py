@@ -97,13 +97,13 @@ function_name = f"{catalog_name}.{schema_name}.customer_risk"
 
 # Define a function to calculate the customer risk of a possible default
 spark.sql(f"""
-CREATE OR REPLACE FUNCTION {function_name}(default_ STRING, housing STRING, loan STRING)
+CREATE OR REPLACE FUNCTION {function_name}(default STRING, housing STRING, loan STRING)
 RETURNS STRING
 LANGUAGE PYTHON AS
 $$
-if default_ == 'unknown' or housing == 'unknown' or loan == 'unknown':
+if default == 'unknown' or housing == 'unknown' or loan == 'unknown':
     return 'yes'
-elif default_ == 'yes' or housing == 'yes' or loan == 'yes':
+elif default == 'yes' or housing == 'yes' or loan == 'yes':
     return 'yes'
 else:
     return 'no'
@@ -131,13 +131,13 @@ training_set = fe.create_training_set(
     feature_lookups=[
         FeatureLookup(
             table_name=feature_table_name,
-            feature_names=["default_", "housing", "loan"],
+            feature_names=["default", "housing", "loan"],
             lookup_key="Id",
         ),
         FeatureFunction(
             udf_name=function_name,
             output_name="risk",
-            input_bindings={"default_": "default_", "housing": "housing", "loan": "loan"},
+            input_bindings={"default": "default", "housing": "housing", "loan": "loan"},
         ),
     ],
     exclude_columns=["update_timestamp_utc"],
@@ -145,7 +145,7 @@ training_set = fe.create_training_set(
 
 # Load feature-engineered DataFrame
 training_df = training_set.load_df().toPandas()
-training_df.rename(columns={"default_": "default"}, inplace=True)
+# training_df.rename(columns={"default_": "default"}, inplace=True)
 
 # Calculate house_age for training and test set
 # test_set = spark.createDataFrame(test_set)

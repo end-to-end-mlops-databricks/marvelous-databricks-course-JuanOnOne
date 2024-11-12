@@ -4,6 +4,7 @@
 # Databricks notebook source
 
 import mlflow
+import subprocess
 from mlflow.models import infer_signature
 from pyspark.sql import SparkSession
 from sklearn.compose import ColumnTransformer
@@ -38,6 +39,7 @@ train_set_spark = spark.table(f"{catalog_name}.{schema_name}.train_set")
 train_set = spark.table(f"{catalog_name}.{schema_name}.train_set").toPandas()
 test_set = spark.table(f"{catalog_name}.{schema_name}.test_set").toPandas()
 
+# Train/Test Splits
 num_features = list(train_set.select_dtypes("number").columns)
 cat_features = list(train_set.select_dtypes("category").columns)
 X_train = train_set[num_features + cat_features]
@@ -47,6 +49,10 @@ X_test = test_set[num_features + cat_features]
 y_test = test_set[target]
 
 # COMMAND ----------
+
+#####################
+# sklearn pipelines #
+#####################
 
 # Numeric Transformer
 numeric_transformer = Pipeline(steps=[("imputer", SimpleImputer(strategy="median")), ("scaler", StandardScaler())])
@@ -71,10 +77,11 @@ preprocessor = ColumnTransformer(
 # Create the pipeline with preprocessing and the RandomForestClassifier
 pipeline = Pipeline(steps=[("preprocessor", preprocessor), ("classifier", RandomForestClassifier(**parameters))])
 
-
 # COMMAND ----------
+
+
 mlflow.set_experiment(experiment_name="/Shared/bank-marketing")
-git_sha = "ffa63b430205ff7"
+git_sha = subprocess.check_output(["git", "rev-parse", "HEAD"]).decode("ascii").strip()
 
 # Start an MLflow run to track the training process
 with mlflow.start_run(
@@ -103,7 +110,7 @@ with mlflow.start_run(
     mlflow.log_metric("accuracy", accuracy)
     mlflow.log_metric("precision", precision)
     mlflow.log_metric("recall", recall)
-    mlflow.log_metric("roc", auc)
+    mlflow.log_metric("auc", auc)
     signature = infer_signature(model_input=X_train, model_output=y_pred)
 
     dataset = mlflow.data.from_spark(train_set_spark, table_name=f"{catalog_name}.{schema_name}.train_set", version="0")
