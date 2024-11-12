@@ -4,8 +4,9 @@
 # Databricks notebook source
 import json
 import subprocess
-import numpy as np
+
 import mlflow
+import numpy as np
 import pandas as pd
 from mlflow import MlflowClient
 from mlflow.models import infer_signature

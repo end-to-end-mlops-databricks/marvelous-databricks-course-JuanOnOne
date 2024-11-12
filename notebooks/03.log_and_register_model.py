@@ -3,8 +3,9 @@
 
 # Databricks notebook source
 
-import mlflow
 import subprocess
+
+import mlflow
 from mlflow.models import infer_signature
 from pyspark.sql import SparkSession
 from sklearn.compose import ColumnTransformer

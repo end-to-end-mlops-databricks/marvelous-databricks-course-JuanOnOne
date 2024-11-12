@@ -13,7 +13,7 @@
 # COMMAND ----------
 
 import time
-from mlflow.tracking import MlflowClient
+
 import requests
 from databricks.sdk import WorkspaceClient
 from databricks.sdk.service.catalog import (
@@ -21,9 +21,11 @@ from databricks.sdk.service.catalog import (
     OnlineTableSpecTriggeredSchedulingPolicy,
 )
 from databricks.sdk.service.serving import EndpointCoreConfigInput, ServedEntityInput
+from mlflow.tracking import MlflowClient
 from pyspark.sql import SparkSession
-from mlops_with_databricks.utils import setup_logger
+
 from mlops_with_databricks.config import ProjectConfig
+from mlops_with_databricks.utils import setup_logger
 
 spark = SparkSession.builder.getOrCreate()
 logger = setup_logger()
@@ -156,4 +158,4 @@ logger.info(f"Execution time: {execution_time} seconds")
 bank_marketing_features = spark.table(f"{catalog_name}.{schema_name}.bank_marketing_features").toPandas()
 
 # COMMAND ----------
-house_features.dtypes
+bank_marketing_features.dtypes
