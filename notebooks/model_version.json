@@ -1,18 +1,18 @@
 {
     "_name": "mlops_students.jarb8926.bank_marketing_model_pyfunc",
-    "_version": "2",
-    "_creation_time": 1731273540181,
-    "_last_updated_timestamp": 1731273547808,
+    "_version": "6",
+    "_creation_time": 1732397883147,
+    "_last_updated_timestamp": 1732397889126,
     "_description": "",
     "_user_id": "jarb8926@gmail.com",
     "_current_stage": null,
-    "_source": "dbfs:/databricks/mlflow-tracking/2240182848917939/f3c8d1b85caa40ad903670dde174f0ed/artifacts/pyfunc-bank-marketing-model",
-    "_run_id": "f3c8d1b85caa40ad903670dde174f0ed",
+    "_source": "dbfs:/databricks/mlflow-tracking/2240182848917939/a465dbadb26540e6bf00ee7f6fce3ba1/artifacts/pyfunc-bank-marketing-model",
+    "_run_id": "a465dbadb26540e6bf00ee7f6fce3ba1",
     "_run_link": null,
     "_status": "READY",
     "_status_message": "",
     "_tags": {
-        "git_sha": "ffa63b430205ff7"
+        "git_sha": "d550d17a6c4cf5c5bd197d5daaa69fa3ad154d97"
     },
     "_aliases": []
 }

@@ -109,7 +109,7 @@ except Exception as e:
 # Get token and host
 logger.info("Get token and host to test endpoint...")
 
-token = dbutils.notebook.entry_point.getDbutils().notebook().getContext().apiToken().get()
+token = dbutils.notebook.entry_point.getDbutils().notebook().getContext().apiToken().get()  # type: ignore # noqa: F821
 host = spark.conf.get("spark.databricks.workspaceUrl")
 
 # COMMAND ----------
@@ -119,10 +119,7 @@ remove_columns = set(["housing", "loan", "default", "y"])
 train_set = spark.table(f"{catalog_name}.{schema_name}.train_set").toPandas()
 num_features = list(train_set.select_dtypes("number").columns)
 cat_features = list(train_set.select_dtypes("object").columns)
-
 required_columns = list(set(num_features + cat_features) - remove_columns)
-
-train_set = spark.table(f"{catalog_name}.{schema_name}.train_set").toPandas()
 
 # Construct dataframe_records to test endpoint
 logger.info("Construct dataframe_records...")
