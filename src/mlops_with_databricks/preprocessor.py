@@ -1,3 +1,5 @@
+from typing import Tuple
+
 import pandas as pd
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import current_timestamp, to_utc_timestamp
@@ -7,111 +9,140 @@ from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import LabelEncoder, OneHotEncoder, StandardScaler
 
+from .config import ProjectConfig
+from .utils import setup_logger
+
+logger = setup_logger()
+
 
 class DataProcessor:
-    def __init__(self, filepath, config, spark: SparkSession):
-        print(f"filepath: {filepath}")
-        print(f"config: {config}")
-        print(f"spark: {spark}")
-        self.spark = spark
-        self.df = self.load_data(filepath)
+    def __init__(self, config: ProjectConfig, spark: SparkSession):
         self.config = config
-        self.X = None
-        self.y = None
-        self.preprocessor = None
-        self.target_encoder = None
+        self.spark = spark
+        self._df = None
+        self.pipeline = None
+        self.target_encoder = LabelEncoder()
 
-    def load_data(self, filepath):
-        df = self.spark.read.option("delimiter", ";").option("header", "true").csv(filepath).toPandas()
-        return df
+    @classmethod
+    def from_file(cls, filepath: str, config: ProjectConfig, spark: SparkSession):
+        processor = cls(config, spark)
+        processor._df = spark.read.option("delimiter", ";").option("header", "true").csv(filepath).toPandas()
+        return processor
+
+    @classmethod
+    def from_dataframe(cls, df: pd.DataFrame, config: ProjectConfig, spark: SparkSession):
+        processor = cls(config, spark)
+        processor._df = df
+        return processor
+
+    @classmethod
+    def load_data_from_catalog(cls, table_name: str, config: ProjectConfig, spark: SparkSession):
+        """Loads data from catalog and returns spark.DataFrame"""
+        processor = cls(config, spark)
+        processor._df = spark.table(f"{config.catalog_name}.{config.schema_name}.{table_name}")
+        return processor
+
+    @property
+    def df(self):
+        if self._df is None:
+            raise ValueError("DataFrame has not been initialized. Use one of the class methods to load data.")
+        return self._df
+
+    def _rename_columns(self, features):
+        renamed = {col: col.replace(".", "_") if "." in col else col for col in features}
+        self._df = self._df.rename(columns=renamed)
+        return list(renamed.values()) if renamed else features
 
     def prepare_data(self):
-        """Prepare the data for preprocessing"""
+        self.config.num_features = self._rename_columns(self.config.num_features)
+        self.config.cat_features = self._rename_columns(self.config.cat_features)
 
-        # Handle numeric features
-        num_features = self.config.num_features
-        renamed_num_features = {col: col.replace(".", "_") for col in num_features if "." in col}
-        if renamed_num_features:
-            self.df.rename(columns=renamed_num_features, inplace=True)
-            renamed_num_features = [v for _, v in renamed_num_features.items()]
-        else:
-            renamed_num_features = num_features
-        for col in renamed_num_features:
-            self.df[col] = pd.to_numeric(self.df[col], errors="coerce")
+        for col in self.config.num_features:
+            self._df[col] = pd.to_numeric(self._df[col], errors="coerce")
 
-        # Convert categorical features from 'object' to 'category'
-        cat_features = self.config.cat_features
-        renamed_cat_features = {col: col.replace(".", "_") for col in cat_features if "." in col}
-        if renamed_cat_features:
-            self.df.rename(columns=renamed_cat_features, inplace=True)
-            renamed_cat_features = [v for _, v in renamed_cat_features.items()]
-        else:
-            renamed_cat_features = cat_features
-        for cat_col in renamed_cat_features:
-            self.df[cat_col] = self.df[cat_col].astype("category")
+        for col in self.config.cat_features:
+            self._df[col] = self._df[col].astype("category")
 
-        # Create primary key "Id", needed later for FeatureEngineering client.
-        self.df["Id"] = pd.DataFrame(self.df.index + 1)
+        # Create index to be able to use as a Feature Table later.
+        self._df["Id"] = self._df.index + 1
+        relevant_columns = self.config.num_features + self.config.cat_features + [self.config.target, "Id"]
+        self._df = self._df[relevant_columns]
 
-        # Extract target and relevant features
-        target = self.config.target
-        relevant_columns = renamed_cat_features + renamed_num_features + [target] + ["Id"]
-        self.df = self.df[relevant_columns]
+        # Encode target variable
+        self._df[self.config.target] = self.target_encoder.fit_transform(self._df[self.config.target])
 
-    def create_preprocessor(self):
-        """Create the preprocessor without fitting"""
-        num_features = self.config.num_features
-        cat_features = self.config.cat_features
-
-        numeric_transformer = Pipeline(
-            steps=[("imputer", SimpleImputer(strategy="median")), ("scaler", StandardScaler())]
-        )
+    def create_pipeline(self):
+        numeric_transformer = Pipeline([("imputer", SimpleImputer(strategy="median")), ("scaler", StandardScaler())])
 
         categorical_transformer = Pipeline(
-            steps=[
+            [
                 ("imputer", SimpleImputer(strategy="constant", fill_value="missing")),
                 ("onehot", OneHotEncoder(max_categories=5, handle_unknown="ignore")),
             ]
         )
 
-        self.preprocessor = ColumnTransformer(
-            transformers=[("num", numeric_transformer, num_features), ("cat", categorical_transformer, cat_features)]
+        self.pipeline = ColumnTransformer(
+            [
+                ("num", numeric_transformer, self.config.num_features),
+                ("cat", categorical_transformer, self.config.cat_features),
+                ("pass", "passthrough", ["Id"]),
+            ]
         )
 
-        self.target_encoder = LabelEncoder()
+    def transform_data(self) -> Tuple[pd.DataFrame, pd.DataFrame]:
+        """Transform data using sklearn pipelines."""
+        X_train, X_test, y_train, y_test = self.split_data()
+
+        if not self.pipeline:
+            self.create_pipeline()
+
+        X_train_transformed = self.pipeline.fit_transform(X_train)
+        X_test_transformed = self.pipeline.transform(X_test)
+
+        feature_names = (
+            self.pipeline.named_transformers_["num"].get_feature_names_out(self.config.num_features).tolist()
+            + self.pipeline.named_transformers_["cat"].get_feature_names_out(self.config.cat_features).tolist()
+            + self.pipeline.named_transformers_["pass"].get_feature_names_out().tolist()
+        )
+
+        logger.info(f"Features: {feature_names}")
+
+        X_train_df = pd.DataFrame(X_train_transformed, columns=feature_names, index=X_train.index)
+        X_test_df = pd.DataFrame(X_test_transformed, columns=feature_names, index=X_test.index)
+        y_train_df = pd.DataFrame({self.config.target: y_train, "Id": X_train["Id"]}, index=y_train.index)
+        y_test_df = pd.DataFrame({self.config.target: y_test, "Id": X_test["Id"]}, index=y_test.index)
+
+        # Add target variable
+        X_train_df = X_train_df.merge(y_train_df, on="Id", how="inner")
+        X_test_df = X_test_df.merge(y_test_df, on="Id", how="inner")
+
+        return X_train_df, X_test_df
 
     def split_data(self, test_size=0.2, random_state=42):
-        """Split data for training."""
-        train_set, test_set = train_test_split(
-            self.df, test_size=test_size, random_state=random_state, stratify=self.df["y"]
-        )
-        return train_set, test_set
+        """Split data."""
+        X = self._df.drop(columns=[self.config.target])
+        y = self._df[self.config.target]
+        return train_test_split(X, y, test_size=test_size, random_state=random_state, stratify=y)
 
-    def save_to_catalog(self, train_set: pd.DataFrame, test_set: pd.DataFrame, spark: SparkSession):
-        """Save splits to catalog."""
-
-        train_set_with_timestamp = spark.createDataFrame(train_set).withColumn(
+    def save_to_catalog(self, df: pd.DataFrame, table_name: str):
+        spark_df = self.spark.createDataFrame(df).withColumn(
             "update_timestamp_utc", to_utc_timestamp(current_timestamp(), "UTC")
         )
-
-        test_set_with_timestamp = spark.createDataFrame(test_set).withColumn(
-            "update_timestamp_utc", to_utc_timestamp(current_timestamp(), "UTC")
+        spark_df.write.mode("overwrite").saveAsTable(
+            f"{self.config.catalog_name}.{self.config.schema_name}.{table_name}"
         )
 
-        train_set_with_timestamp.write.mode("append").saveAsTable(
-            f"{self.config.catalog_name}.{self.config.schema_name}.train_set"
-        )
-
-        test_set_with_timestamp.write.mode("append").saveAsTable(
-            f"{self.config.catalog_name}.{self.config.schema_name}.test_set"
-        )
-
-        spark.sql(
-            f"ALTER TABLE {self.config.catalog_name}.{self.config.schema_name}.train_set "
+        self.spark.sql(
+            f"ALTER TABLE {self.config.catalog_name}.{self.config.schema_name}.{table_name} "
             "SET TBLPROPERTIES (delta.enableChangeDataFeed = true);"
         )
 
-        spark.sql(
-            f"ALTER TABLE {self.config.catalog_name}.{self.config.schema_name}.test_set "
-            "SET TBLPROPERTIES (delta.enableChangeDataFeed = true);"
-        )
+    def save_raw_to_catalog(self):
+        X_train, X_test, y_train, y_test = self.split_data()
+        self.save_to_catalog(pd.concat([X_train, y_train], axis=1), "train_set")
+        self.save_to_catalog(pd.concat([X_test, y_test], axis=1), "test_set")
+
+    def save_transformed_to_catalog(self):
+        train_df, test_df = self.transform_data()
+        self.save_to_catalog(train_df, "transformed_train_set")
+        self.save_to_catalog(test_df, "transformed_test_set")

@@ -1,5 +1,5 @@
 # Databricks notebook source
-# MAGIC %pip install ./mlops_with_databricks-0.0.1-py3-none-any.whl
+# MAGIC %pip install ./mlops_with_databricks-0.0.1-py3-none-any.whl -q
 
 # COMMAND ----------
 # dbutils.library.restartPython()
@@ -11,55 +11,42 @@ from databricks.feature_engineering import FeatureFunction, FeatureLookup
 from databricks.sdk import WorkspaceClient
 from mlflow.models import infer_signature
 from pyspark.sql import SparkSession
-from sklearn.compose import ColumnTransformer
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.impute import SimpleImputer
-from sklearn.metrics import accuracy_score, precision_score, recall_score, roc_auc_score
-from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import LabelEncoder, OneHotEncoder, StandardScaler
 
+from mlops_with_databricks.base_model import BaselineModel
 from mlops_with_databricks.config import ProjectConfig
+from mlops_with_databricks.preprocessor import DataProcessor
+from mlops_with_databricks.utils import setup_logger
 
 # Initialize the Databricks session and clients
 spark = SparkSession.builder.getOrCreate()
 workspace = WorkspaceClient()
 fe = feature_engineering.FeatureEngineeringClient()
 
+
 # COMMAND ----------
 
 mlflow.set_registry_uri("databricks-uc")
 mlflow.set_tracking_uri("databricks")
-
-config = ProjectConfig.from_yaml(config_path="../project_config.yml")
+logger = setup_logger()
 
 # Extract configuration details
-num_features = config.num_features
-cat_features = config.cat_features
-target = config.target
-parameters = config.parameters
-catalog_name = config.catalog_name
-schema_name = config.schema_name
+config = ProjectConfig.from_yaml(config_path="../project_config.yml")
+processor = DataProcessor(config, spark)
 
-# Define table names and function name
-feature_table_name = f"{catalog_name}.{schema_name}.bank_marketing_features"
 
 # COMMAND ----------
-# Load training and test sets
-train_set = spark.table(f"{catalog_name}.{schema_name}.train_set")
 
-test_set = spark.table(f"{catalog_name}.{schema_name}.test_set")
-
-# COMMAND ----------
 ############################
 # Create Feature Table
 ############################
 
 # Define feature table
-feature_table_name = f"{catalog_name}.{schema_name}.bank_marketing_features"
+logger.info("Create feature table.")
+feature_table_name = f"{config.catalog_name}.{config.schema_name}.bank_marketing_features"
 
 # Create or replace feature table
 spark.sql(f"""
-CREATE OR REPLACE TABLE {catalog_name}.{schema_name}.bank_marketing_features
+CREATE OR REPLACE TABLE {config.catalog_name}.{config.schema_name}.bank_marketing_features
 (Id STRING NOT NULL,
  default_ STRING,
  housing STRING,
@@ -68,32 +55,31 @@ CREATE OR REPLACE TABLE {catalog_name}.{schema_name}.bank_marketing_features
 
 # Add primary key to table
 spark.sql(
-    f"ALTER TABLE {catalog_name}.{schema_name}.bank_marketing_features "
+    f"ALTER TABLE {config.catalog_name}.{config.schema_name}.bank_marketing_features "
     "ADD CONSTRAINT bank_marketing_pk PRIMARY KEY(Id);"
 )
 
 # enableChangeDataFeed to True
 spark.sql(
-    f"ALTER TABLE {catalog_name}.{schema_name}.bank_marketing_features "
+    f"ALTER TABLE {config.catalog_name}.{config.schema_name}.bank_marketing_features "
     "SET TBLPROPERTIES (delta.enableChangeDataFeed = true);"
 )
 
 # Insert data into the feature table from both train and test sets
 spark.sql(
-    f"INSERT INTO {catalog_name}.{schema_name}.bank_marketing_features "
-    f"SELECT Id, housing, default, loan FROM {catalog_name}.{schema_name}.train_set"
+    f"INSERT INTO {config.catalog_name}.{config.schema_name}.bank_marketing_features "
+    f"SELECT Id, housing, default, loan FROM {config.catalog_name}.{config.schema_name}.train_set"
 )
 spark.sql(
-    f"INSERT INTO {catalog_name}.{schema_name}.bank_marketing_features "
-    f"SELECT Id, housing, default, loan FROM {catalog_name}.{schema_name}.test_set"
+    f"INSERT INTO {config.catalog_name}.{config.schema_name}.bank_marketing_features "
+    f"SELECT Id, housing, default, loan FROM {config.catalog_name}.{config.schema_name}.test_set"
 )
 
 # COMMAND ----------
-
 ############################
 # Create FeatureFunction UDF
 ############################
-function_name = f"{catalog_name}.{schema_name}.customer_risk"
+function_name = f"{config.catalog_name}.{config.schema_name}.customer_risk"
 
 # Define a function to calculate the customer risk of a possible default
 spark.sql(f"""
@@ -111,23 +97,21 @@ $$
 """)
 
 # COMMAND ----------
-
 # Load training and test sets
+train_set = DataProcessor.load_data_from_catalog("train_set", config, spark).df
 train_set = train_set.drop("housing", "loan", "default")
 
 # CAST primary key to "string"
-train_set = train_set.withColumn(
-    "Id", train_set["Id"].cast("string")
-)  # <- make sure "Id" it's string type!  # <- make sure "Id" it's string type!
+train_set = train_set.withColumn("Id", train_set["Id"].cast("string"))
 
 ###########################
 # Feature engineering setup
 ###########################
-
 # Create training_set with feature_engineering client fe
+logger.info("Create a training set...")
 training_set = fe.create_training_set(
     df=train_set,
-    label=target,
+    label=config.target,
     feature_lookups=[
         FeatureLookup(
             table_name=feature_table_name,
@@ -145,95 +129,73 @@ training_set = fe.create_training_set(
 
 # Load feature-engineered DataFrame
 training_df = training_set.load_df().toPandas()
-# training_df.rename(columns={"default_": "default"}, inplace=True)
 
 # Calculate house_age for training and test set
-# test_set = spark.createDataFrame(test_set)
+test_set = DataProcessor.load_data_from_catalog("test_set", config, spark).df
 test_set = test_set.selectExpr("*", f"{function_name}(default, housing, loan) as risk")
 test_set = test_set.toPandas()
 
-# Split features and target
-num_features = list(training_df.select_dtypes("number").columns)
-cat_features = list(training_df.select_dtypes("category").columns) + ["risk"]
-X_train = training_df[num_features + cat_features]
-y_train = training_df[target]
-X_test = test_set[num_features + cat_features]
-y_test = test_set[target]
+# COMMAND ----------
+# Test Set
+processor = DataProcessor.from_dataframe(test_set, config, spark)
+X_test = processor.df
+y_test = X_test[config.target]
+X_test = X_test.drop(columns=[config.target, "update_timestamp_utc"])
 
-########################################
-# Setup preprocessing and model pipeline
-########################################
-# Numeric Transformer
-numeric_transformer = Pipeline(steps=[("imputer", SimpleImputer(strategy="median")), ("scaler", StandardScaler())])
+# Train Set
+processor = DataProcessor.from_dataframe(training_df, config, spark)
+X_train = processor.df
+y_train = X_train[config.target]
+X_train = X_train.drop(columns=[config.target])
 
-# Categorical Transformer
-categorical_transformer = Pipeline(
-    steps=[
-        ("imputer", SimpleImputer(strategy="constant", fill_value="missing")),
-        ("onehot", OneHotEncoder(max_categories=5, handle_unknown="ignore")),
-    ]
-)
+# Create Model
+model = BaselineModel(config, spark)
+processor.create_pipeline()
+model.train(processor.pipeline.fit_transform(X_train), y_train)
 
-# Label Encoder for target variable
-le = LabelEncoder()
-
-# Define the preprocessor
-preprocessor = ColumnTransformer(
-    transformers=[("num", numeric_transformer, num_features), ("cat", categorical_transformer, cat_features)],
-    remainder="passthrough",
-)
-
-# Create the pipeline with preprocessing and the RandomForestClassifier
-pipeline = Pipeline(steps=[("preprocessor", preprocessor), ("classifier", RandomForestClassifier(**parameters))])
-
+# COMMAND ----------
 ##########
 # MLFlow #
 ##########
 
 # Set and start MLflow experiment
+logger.info("Start experiment run...")
 mlflow.set_experiment(experiment_name="/Shared/bank-marketing-fe")
-git_sha = "ffa63b430205ff7"
+git_sha = "d550d17a6c4cf5c5bd197d5daaa69fa3ad154d97"
 
 with mlflow.start_run(tags={"branch": "week2", "git_sha": f"{git_sha}"}) as run:
     run_id = run.info.run_id
 
     # Pipeline fit/predict
-    pipeline.fit(X_train, le.fit_transform(y_train))
-    y_test_encoded = le.transform(y_test)
-    y_pred = pipeline.predict(X_test)
-
-    # Evaluate the model performance
-    precision = precision_score(y_test_encoded, y_pred)
-    recall = recall_score(y_test_encoded, y_pred)
-    accuracy = accuracy_score(y_test_encoded, y_pred)
-    auc = roc_auc_score(y_test_encoded, y_pred)
-
-    print(f"Accuracy: {accuracy}")
-    print(f"Precision: {precision}")
-    print(f"Recall: {recall}")
-    print(f"AUC: {auc}")
+    logger.info("## Instantiate, train and evaluate model...")
+    model = BaselineModel(config, spark)
+    processor.create_pipeline()
+    model.train(processor.pipeline.fit_transform(X_train), y_train)
+    metrics = model.evaluate(processor.pipeline.transform(X_test), y_test)
+    y_pred = model.predict(processor.pipeline.transform(X_test))
 
     # Log model parameters, metrics, and model
+    logger.info("## Log model parameters, metrics, and model...")
     mlflow.log_param("model_type", "RandomForestClassifier with preprocessing")
-    mlflow.log_params(parameters)
-    mlflow.log_metric("accuracy", accuracy)
-    mlflow.log_metric("precision", precision)
-    mlflow.log_metric("recall", recall)
-    mlflow.log_metric("roc", auc)
+    mlflow.log_params(config.parameters)
+    mlflow.log_metrics(metrics)
     signature = infer_signature(model_input=X_train, model_output=y_pred)
 
     # Log model in experiments with feature engineering client fe
+    logger.info("Log model...")
     fe.log_model(
-        model=pipeline,
+        model=model.model,
         flavor=mlflow.sklearn,
         artifact_path="randomforest-pipeline-model-fe",
         training_set=training_set,
         signature=signature,
     )
 
+# Register Model
+logger.info("Register model...")
 mlflow.register_model(
     model_uri=f"runs:/{run_id}/randomforest-pipeline-model-fe",
-    name=f"{catalog_name}.{schema_name}.bank_marketing_model_fe",
+    name=f"{config.catalog_name}.{config.schema_name}.bank_marketing_model_fe",
 )
 
 # COMMAND ----------

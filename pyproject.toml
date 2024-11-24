@@ -32,7 +32,19 @@ where = ["src"]
 include = ["mlops_with_databricks"]
 
 [tool.ruff]
-line-length = 120
+indent-width = 4
+line-length = 119
+
+[tool.flake8]
+docstring-convention = "all"
+ignore = ["D107", "D212", "E501", "W503", "W605", "D203", "D100"]
+max-line-length = 119
+
+[tool.isort]
+profile = "black"
+multi_line_output = "VERTICAL_HANGING_INDENT"
+force_grid_wrap = 2
+line_length = 119
 
 [tool.ruff.lint]
 select = [
