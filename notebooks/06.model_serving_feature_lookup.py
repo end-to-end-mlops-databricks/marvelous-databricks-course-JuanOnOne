@@ -127,9 +127,6 @@ sampled_records = train_set[required_columns].sample(n=1000, replace=True).to_di
 dataframe_records = [[record] for record in sampled_records]
 
 # COMMAND ----------
-train_set.dtypes
-
-# COMMAND ----------
 dataframe_records[0]
 
 # COMMAND ----------
@@ -153,6 +150,3 @@ logger.info(f"Execution time: {execution_time} seconds")
 # COMMAND ----------
 
 bank_marketing_features = spark.table(f"{catalog_name}.{schema_name}.bank_marketing_features").toPandas()
-
-# COMMAND ----------
-bank_marketing_features.dtypes
