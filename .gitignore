@@ -96,4 +96,5 @@ dmypy.json
 .vscode
 .history
 
-*mlruns/
+mlruns/
+*.json
